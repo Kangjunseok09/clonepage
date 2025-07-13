@@ -11,7 +11,7 @@ function initBoard() {
   grid = Array(4).fill(null).map(() => Array(4).fill(0));
   addTile();
   addTile();
-  updateBoard();
+  updateBoard();z
   score = 0;
   updateScore();
 }
