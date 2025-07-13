@@ -1,151 +1,168 @@
-// script.js
+const board         = document.getElementById('board');
+const gridContainer = document.getElementById('grid-container');
+const tileContainer = document.getElementById('tile-container');
+const scoreDisplay  = document.getElementById('score');
+const bestDisplay   = document.getElementById('best-score');
+const newGameBtn    = document.getElementById('new-game');
+const msgContainer  = document.getElementById('message-container');
+const msgText       = document.getElementById('message-text');
+const retryBtn      = document.getElementById('retry');
 
-const board = document.getElementById("board");
-const scoreDisplay = document.getElementById("score");
-const bestDisplay = document.getElementById("best-score");
-const newGameBtn = document.getElementById("new-game");
+const SIZE = 4;
+const GAP  = 10;
+let grid, score, hasWon, cellSize;
 
-let grid;
-let score = 0;
+function setupGrid() {
+  const gc = document.getElementById('grid-container');
+  gc.innerHTML = '';
+  for (let i = 0; i < SIZE*SIZE; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'grid-cell';
+    gc.appendChild(cell);
+  }
+}
 
-// 게임 시작 / 리셋
-function initBoard() {
-  // 1) 보드 비우기
-  board.innerHTML = "";
+function calcCellSize(){
+  const boardSize = board.clientWidth - GAP*2;
+  cellSize = (boardSize - GAP*(SIZE-1)) / SIZE;
+}
 
-  // 2) 그리드 초기화
-  grid = Array(4)
-    .fill(null)
-    .map(() => Array(4).fill(0));
-
-  // 3) 점수 초기화 & 화면 반영
-  score = 0;
+function initGame(){
+  grid = Array.from({length:SIZE}, ()=>Array(SIZE).fill(null));
+  score = 0; hasWon = false;
   updateScore();
-
-  // 4) 새 타일 두 개 추가
-  addTile();
-  addTile();
-
-  // 5) 보드 렌더링
-  updateBoard();
+  setupGrid();
+  tileContainer.innerHTML = '';
+  msgContainer.style.display = 'none';
+  calcCellSize();
+  addRandomTile();
+  addRandomTile();
 }
 
-// 빈 셀 중 무작위로 2 또는 4 생성
-function addTile() {
-  const emptyCells = [];
-  for (let r = 0; r < 4; r++) {
-    for (let c = 0; c < 4; c++) {
-      if (grid[r][c] === 0) emptyCells.push([r, c]);
+function addRandomTile(){
+  const empties = [];
+  for(let r=0; r<SIZE; r++) {
+    for(let c=0; c<SIZE; c++) {
+      if (!grid[r][c]) empties.push({r, c});
     }
   }
-  if (emptyCells.length === 0) return;
-  const [r, c] = emptyCells[Math.floor(Math.random() * emptyCells.length)];
-  grid[r][c] = Math.random() > 0.1 ? 2 : 4;
+  if (empties.length === 0) return;
+  const { r, c } = empties[Math.floor(Math.random() * empties.length)];
+  const value = Math.random() < 0.9 ? 2 : 4;
+
+  const el = document.createElement('div');
+  el.className = 'tile';
+  el.setAttribute('data-value', value);
+  el.textContent = value;
+  el.style.width  = `${cellSize}px`;
+  el.style.height = `${cellSize}px`;
+  el.style.transform = `translate(${c*(cellSize+GAP)}px,${r*(cellSize+GAP)}px)`;
+  tileContainer.appendChild(el);
+
+  grid[r][c] = { el, value, row: r, col: c };
 }
 
-// 그리드 상태를 화면에 그리기
-function updateBoard() {
-  board.innerHTML = "";
-  for (let r = 0; r < 4; r++) {
-    for (let c = 0; c < 4; c++) {
-      const cell = document.createElement("div");
-      cell.classList.add("cell");
-      const value = grid[r][c];
-      if (value !== 0) {
-        cell.textContent = value;
-        cell.setAttribute("data-value", value);
+function slide(line){
+  const arr = line.filter(x=>x);
+  for(let i=0;i<arr.length-1;i++){
+    if(arr[i].value===arr[i+1].value){
+      arr[i].value*=2;
+      score+=arr[i].value;
+      if(arr[i].value===2048) winGame();
+      tileContainer.removeChild(arr[i+1].el);
+      arr.splice(i+1,1);
+    }
+  }
+  while(arr.length<SIZE) arr.push(null);
+  return arr;
+}
+
+function move(dir){
+  let moved = false;
+  const newGrid = Array.from({length:SIZE}, ()=>Array(SIZE).fill(null));
+
+  if(dir==='left'||dir==='right'){
+    for(let r=0;r<SIZE;r++){
+      let row = grid[r].slice();
+      if(dir==='right') row.reverse();
+      const merged = slide(row);
+      if(dir==='right') merged.reverse();
+      for(let c=0;c<SIZE;c++){
+        newGrid[r][c] = merged[c];
+        if(merged[c]!==grid[r][c]) moved=true;
       }
-      board.appendChild(cell);
+    }
+  } else {
+    for(let c=0;c<SIZE;c++){
+      let col = grid.map(row=>row[c]);
+      if(dir==='down') col.reverse();
+      const merged = slide(col);
+      if(dir==='down') merged.reverse();
+      for(let r=0;r<SIZE;r++){
+        newGrid[r][c] = merged[r];
+        if(merged[r]!==grid[r][c]) moved=true;
+      }
     }
   }
-}
+  if(!moved) return;
+  grid = newGrid;
 
-// 점수 표시 업데이트
-function updateScore() {
-  scoreDisplay.textContent = score;
-  const best = localStorage.getItem("best") || 0;
-  if (score > best) localStorage.setItem("best", score);
-  bestDisplay.textContent = localStorage.getItem("best") || 0;
-}
-
-// 키 입력 처리
-function handleKey(e) {
-  let moved = false;
-  if (["ArrowLeft", "a", "ㅁ"].includes(e.key)) moved = moveLeft();
-  if (["ArrowRight", "d", "ㅇ"].includes(e.key)) moved = moveRight();
-  if (["ArrowUp", "w", "ㅈ"].includes(e.key)) moved = moveUp();
-  if (["ArrowDown", "s", "ㄴ"].includes(e.key)) moved = moveDown();
-
-  if (moved) {
-    addTile();
-    updateBoard();
-    updateScore();
-  }
-}
-
-// 한 줄 슬라이드 & 병합 로직
-function slide(row) {
-  let arr = row.filter(v => v);
-  for (let i = 0; i < arr.length - 1; i++) {
-    if (arr[i] === arr[i + 1]) {
-      arr[i] *= 2;
-      score += arr[i];
-      arr[i + 1] = 0;
+  for(let r=0;r<SIZE;r++){
+    for(let c=0;c<SIZE;c++){
+      const tile = grid[r][c];
+      if(tile){
+        tile.row = r; tile.col = c;
+        tile.value = tile.value;
+        tile.el.setAttribute('data-value', tile.value);
+        tile.el.textContent = tile.value;
+        tile.el.style.transform = `translate(${c*(cellSize+GAP)}px,${r*(cellSize+GAP)}px)`;
+      }
     }
   }
-  return arr.filter(v => v).concat(Array(4 - arr.filter(v => v).length).fill(0));
+
+  addRandomTile();
+  updateScore();
+  checkGameOver();
 }
 
-// 4방향 이동 함수
-function moveLeft() {
-  let moved = false;
-  for (let r = 0; r < 4; r++) {
-    const original = [...grid[r]];
-    grid[r] = slide(grid[r]);
-    if (original.toString() !== grid[r].toString()) moved = true;
+// 입력 처리
+function handleInput(e){
+  if(msgContainer.style.display==='flex') return;
+  let dir;
+  if(['ArrowLeft','a','ㅁ'].includes(e.key)) dir='left';
+  if(['ArrowRight','d','ㅇ'].includes(e.key)) dir='right';
+  if(['ArrowUp','w','ㅈ'].includes(e.key)) dir='up';
+  if(['ArrowDown','s','ㄴ'].includes(e.key)) dir='down';
+  if(dir) move(dir);
+}
+
+function checkGameOver(){
+  if(hasWon) return;
+  for(let r=0;r<SIZE;r++){
+    for(let c=0;c<SIZE;c++){
+      const t = grid[r][c];
+      if(!t) return;
+      if(c<SIZE-1 && t.value===grid[r][c+1]?.value) return;
+      if(r<SIZE-1 && t.value===grid[r+1][c]?.value) return;
+    }
   }
-  return moved;
+  gameOver();
 }
 
-function moveRight() {
-  let moved = false;
-  for (let r = 0; r < 4; r++) {
-    const original = [...grid[r]];
-    grid[r] = slide(grid[r].reverse()).reverse();
-    if (original.toString() !== grid[r].toString()) moved = true;
-  }
-  return moved;
+function winGame(){ hasWon=true; showMessage('You Win!'); }
+function gameOver(){ showMessage('Game Over'); }
+function showMessage(txt){ msgText.textContent=txt; msgContainer.style.display='flex'; }
+
+function updateScore(){
+  scoreDisplay.textContent=score;
+  const best=parseInt(localStorage.getItem('best')||0,10);
+  if(score>best) localStorage.setItem('best',score);
+  bestDisplay.textContent=localStorage.getItem('best');
 }
 
-function moveUp() {
-  let moved = false;
-  for (let c = 0; c < 4; c++) {
-    const col = [];
-    for (let r = 0; r < 4; r++) col.push(grid[r][c]);
-    const original = [...col];
-    const newCol = slide(col);
-    for (let r = 0; r < 4; r++) grid[r][c] = newCol[r];
-    if (original.toString() !== newCol.toString()) moved = true;
-  }
-  return moved;
-}
+window.addEventListener('resize',()=>{ calcCellSize(); });
+document.addEventListener('keydown',handleInput);
+newGameBtn.addEventListener('click',initGame);
+retryBtn.addEventListener('click',initGame);
 
-function moveDown() {
-  let moved = false;
-  for (let c = 0; c < 4; c++) {
-    const col = [];
-    for (let r = 0; r < 4; r++) col.push(grid[r][c]);
-    const original = [...col];
-    const newCol = slide(col.reverse()).reverse();
-    for (let r = 0; r < 4; r++) grid[r][c] = newCol[r];
-    if (original.toString() !== newCol.toString()) moved = true;
-  }
-  return moved;
-}
-
-// 이벤트 리스너 등록
-document.addEventListener("keydown", handleKey);
-newGameBtn.addEventListener("click", initBoard);
-
-// 첫 실행
-initBoard();
+window.onload=()=>{ calcCellSize(); initGame(); }
